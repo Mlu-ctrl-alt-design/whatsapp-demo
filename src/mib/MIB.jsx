@@ -31,6 +31,7 @@ export default function MIB() {
 function MIBChrome() {
   const { phase } = useDemo();
   const [active, setActive] = useState("burials");
+  const isMobile = useIsMobile();
 
   // After the WhatsApp flow closes (email captured), show the transition
   // screen for a beat, then pivot to the Dashboard — the funeral-business
@@ -43,6 +44,20 @@ function MIBChrome() {
     }
   }, [phase]);
 
+  // On mobile, drop the Ezra360 chrome entirely — just show the WhatsApp
+  // pane full-screen, and overlay the confirmation when the flow closes.
+  if (isMobile) {
+    return (
+      <div style={{
+        height: "100dvh", width: "100vw", overflow: "hidden",
+        fontFamily: "'Segoe UI',system-ui,sans-serif", background: "#000",
+      }}>
+        <Whatsapp fullscreen/>
+        {phase === "CLOSED" && <MobileConfirmation/>}
+      </div>
+    );
+  }
+
   return (
     <div style={{
       height: "100vh", width: "100vw", display: "flex", flexDirection: "column",
@@ -52,6 +67,37 @@ function MIBChrome() {
       <ModuleSubnav active={active} onSelect={setActive}/>
       <BoothLayout active={active}/>
       <StatusBar/>
+    </div>
+  );
+}
+
+function useIsMobile(breakpoint = 768) {
+  const query = `(max-width: ${breakpoint}px)`;
+  const [match, setMatch] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = (e) => setMatch(e.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return match;
+}
+
+function MobileConfirmation() {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+      display: "flex", alignItems: "stretch", justifyContent: "center",
+      zIndex: 2000, padding: 12,
+    }}>
+      <div style={{
+        background: "#fff", borderRadius: 12, overflow: "auto",
+        width: "100%", maxWidth: 520, alignSelf: "stretch",
+        display: "flex", flexDirection: "column",
+      }}>
+        <Transition/>
+      </div>
     </div>
   );
 }
