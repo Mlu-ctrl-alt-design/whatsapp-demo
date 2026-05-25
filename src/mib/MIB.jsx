@@ -11,6 +11,9 @@ import { BurialRecord } from "./BurialRecord.jsx";
 import { Dashboard } from "./Dashboard.jsx";
 import { Transition } from "./Transition.jsx";
 import { MODULES } from "./data.js";
+import {
+  getQueuedLeads, clearQueuedLeads, removeQueuedLead, exportQueuedLeadsCsv,
+} from "./crm.js";
 
 const TEAL = "#219CD6";
 
@@ -209,12 +212,162 @@ function StatusBar() {
         {claim.recordId ? `Editing ${claim.recordId}` : "Awaiting WhatsApp inbound…"}
       </span>
       <div style={{ flex: 1 }}/>
+      <PendingLeads/>
       <span style={{ color: "#888" }}>
         Burials handled today · {claim.stage === "Completed" ? "1" : "0"}
       </span>
     </div>
   );
 }
+
+// ─── Pending leads — failed CRM submissions queued in localStorage ────────────
+function PendingLeads() {
+  const [queue, setQueue] = useState(() => getQueuedLeads());
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const refresh = () => setQueue(getQueuedLeads());
+    window.addEventListener("crm-queue-changed", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener("crm-queue-changed", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+
+  const count = queue.length;
+  const hasFailures = count > 0;
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        title={hasFailures ? "Submissions that failed to reach the CRM" : "No pending leads"}
+        style={{
+          background: hasFailures ? "#fff4ce" : "transparent",
+          border: `1px solid ${hasFailures ? "#d8b740" : "transparent"}`,
+          color: hasFailures ? "#3b3a39" : "#888",
+          padding: "1px 8px", borderRadius: 2, fontSize: 11,
+          cursor: "pointer", fontFamily: "inherit",
+          display: "inline-flex", alignItems: "center", gap: 6,
+        }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: "50%",
+          background: hasFailures ? "#d83b01" : "#888",
+        }}/>
+        Pending leads · {count}
+      </button>
+
+      {open && (
+        <PendingLeadsModal
+          queue={queue}
+          onClose={() => setOpen(false)}
+          onExport={() => exportQueuedLeadsCsv()}
+          onClear={() => { clearQueuedLeads(); setQueue([]); }}
+          onRemove={(ts) => { removeQueuedLead(ts); setQueue(getQueuedLeads()); }}
+        />
+      )}
+    </>
+  );
+}
+
+function PendingLeadsModal({ queue, onClose, onExport, onClear, onRemove }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)",
+        display: "grid", placeItems: "center", zIndex: 1000,
+      }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fff", width: "min(900px, 92vw)", maxHeight: "82vh",
+          borderRadius: 4, boxShadow: "0 12px 40px rgba(0,0,0,0.25)",
+          display: "flex", flexDirection: "column", overflow: "hidden",
+          fontFamily: "'Segoe UI',system-ui,sans-serif",
+        }}>
+        <div style={{
+          padding: "14px 18px", borderBottom: "1px solid #e6e4e2",
+          display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#1a1a1a", flex: 1 }}>
+            Pending CRM leads <span style={{ color: "#888", fontWeight: 400 }}>· {queue.length}</span>
+          </div>
+          <button onClick={onExport} disabled={queue.length === 0} style={btnPrimary(queue.length === 0)}>
+            Export CSV
+          </button>
+          <button onClick={onClear} disabled={queue.length === 0} style={btnGhost(queue.length === 0)}>
+            Clear all
+          </button>
+          <button onClick={onClose} style={{ ...btnGhost(false), padding: "4px 8px" }}>
+            ✕
+          </button>
+        </div>
+
+        <div style={{ overflow: "auto", flex: 1 }}>
+          {queue.length === 0 ? (
+            <div style={{ padding: "40px 18px", textAlign: "center", color: "#888", fontSize: 13 }}>
+              No pending leads. Anything that fails to reach the CRM will land here.
+            </div>
+          ) : (
+            <table style={{
+              width: "100%", borderCollapse: "collapse", fontSize: 12, color: "#1a1a1a",
+            }}>
+              <thead>
+                <tr style={{ background: "#f7f7f6", textAlign: "left" }}>
+                  <th style={th}>When</th>
+                  <th style={th}>Name</th>
+                  <th style={th}>Mobile</th>
+                  <th style={th}>Email</th>
+                  <th style={th}>Campaign</th>
+                  <th style={th}>Reason</th>
+                  <th style={{ ...th, width: 40 }}/>
+                </tr>
+              </thead>
+              <tbody>
+                {queue.map((e) => (
+                  <tr key={e.timestamp} style={{ borderTop: "1px solid #ececea" }}>
+                    <td style={td}>{new Date(e.timestamp).toLocaleString()}</td>
+                    <td style={td}>{e.name}</td>
+                    <td style={td}>{e.mobile}</td>
+                    <td style={td}>{e.email}</td>
+                    <td style={td}>{e.campaign}</td>
+                    <td style={{ ...td, color: "#a4262c", maxWidth: 260, whiteSpace: "normal" }}>
+                      {e.reason}
+                    </td>
+                    <td style={td}>
+                      <button onClick={() => onRemove(e.timestamp)}
+                        title="Remove this entry"
+                        style={{
+                          background: "transparent", border: "none", cursor: "pointer",
+                          color: "#888", fontSize: 13, padding: 2,
+                        }}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const th = { padding: "8px 12px", fontWeight: 600, fontSize: 11, color: "#3b3a39", whiteSpace: "nowrap" };
+const td = { padding: "8px 12px", whiteSpace: "nowrap" };
+
+const btnPrimary = (disabled) => ({
+  background: disabled ? "#d4d2d0" : TEAL, color: "#fff",
+  border: "none", borderRadius: 2, padding: "5px 12px", fontSize: 12,
+  cursor: disabled ? "default" : "pointer", fontFamily: "inherit",
+});
+const btnGhost = (disabled) => ({
+  background: "transparent", color: disabled ? "#bbb" : "#3b3a39",
+  border: "1px solid #c8c6c4", borderRadius: 2, padding: "5px 10px",
+  fontSize: 12, cursor: disabled ? "default" : "pointer", fontFamily: "inherit",
+});
 
 // ─── Extra animation styles for newly populated fields ────────────────────────
 function ExtraStyles() {

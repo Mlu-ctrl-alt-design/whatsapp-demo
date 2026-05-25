@@ -10,7 +10,7 @@ const WA_BG = "#ece5dd";
 const WA_BG_TILE = "linear-gradient(135deg, #ece5dd 0%, #d9d2c8 100%)";
 
 export function Whatsapp() {
-  const { chat, submit, reset, phase } = useDemo();
+  const { chat, submit, reset, phase, typing } = useDemo();
   const [draft, setDraft] = useState("");
   const scrollRef = useRef();
 
@@ -18,7 +18,7 @@ export function Whatsapp() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chat.length]);
+  }, [chat.length, typing]);
 
   const send = () => {
     if (!draft.trim()) return;
@@ -87,6 +87,7 @@ export function Whatsapp() {
           {chat.map((m, i) => (
             <Bubble key={i} from={m.from} text={m.text} t={m.t} />
           ))}
+          {typing && <TypingBubble/>}
         </div>
 
         {/* Quick replies */}
@@ -129,6 +130,37 @@ export function Whatsapp() {
         </div>
       </div>
     </div>
+  );
+}
+
+function TypingBubble() {
+  return (
+    <div style={{
+      alignSelf: "flex-start", maxWidth: "82%",
+      background: "#fff", borderRadius: 8, padding: "8px 12px",
+      boxShadow: "0 1px 0.5px rgba(0,0,0,0.08)",
+      display: "inline-flex", alignItems: "center", gap: 4,
+    }} className="fade-up">
+      <Dot delay="0s"/>
+      <Dot delay="0.15s"/>
+      <Dot delay="0.3s"/>
+      <style>{`
+        @keyframes wa-typing {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30%           { transform: translateY(-3px); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function Dot({ delay }) {
+  return (
+    <span style={{
+      width: 6, height: 6, borderRadius: "50%", background: "#7d8186",
+      display: "inline-block",
+      animation: `wa-typing 1s ease-in-out ${delay} infinite`,
+    }}/>
   );
 }
 
