@@ -67,15 +67,21 @@ const initial = {
   claim: emptyClaim(),
   chat: emptyChat(),
   awaitingEmailBadge: false,
+  typing: false,
 };
+
+// Delay between "Ezra360 is typing…" appearing and the bot bubble landing.
+const TYPING_DELAY_MS = 700;
 
 // ─── reducer ──────────────────────────────────────────────────────────────────
 function reducer(s, a) {
   switch (a.type) {
     case "BOT_SAY":
-      return { ...s, chat: [...s.chat, { from: "bot", text: a.text, t: ts() }] };
+      return { ...s, typing: false, chat: [...s.chat, { from: "bot", text: a.text, t: ts() }] };
     case "USER_SAY":
       return { ...s, chat: [...s.chat, { from: "user", text: a.text, t: ts() }] };
+    case "BOT_TYPING":
+      return { ...s, typing: a.on };
     case "SET_PHASE":
       return { ...s, phase: a.phase };
     case "PATCH_CLAIM":
@@ -114,7 +120,12 @@ export function DemoProvider({ children }) {
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  const say = useCallback((text) => dispatch({ type: "BOT_SAY", text }), []);
+  // Each bot line briefly flips on the "typing" indicator, then lands the
+  // bubble after TYPING_DELAY_MS — feels closer to a real WhatsApp reply.
+  const say = useCallback((text) => {
+    dispatch({ type: "BOT_TYPING", on: true });
+    setTimeout(() => dispatch({ type: "BOT_SAY", text }), TYPING_DELAY_MS);
+  }, []);
   const sayUser = useCallback((text) => dispatch({ type: "USER_SAY", text }), []);
   const audit = useCallback((label) => dispatch({ type: "AUDIT", label }), []);
 

@@ -9,8 +9,8 @@ const WA_GREEN_BUBBLE = "#dcf8c6";
 const WA_BG = "#ece5dd";
 const WA_BG_TILE = "linear-gradient(135deg, #ece5dd 0%, #d9d2c8 100%)";
 
-export function Whatsapp() {
-  const { chat, submit, reset, phase } = useDemo();
+export function Whatsapp({ fullscreen = false }) {
+  const { chat, submit, reset, phase, typing } = useDemo();
   const [draft, setDraft] = useState("");
   const scrollRef = useRef();
 
@@ -18,7 +18,7 @@ export function Whatsapp() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chat.length]);
+  }, [chat.length, typing]);
 
   const send = () => {
     if (!draft.trim()) return;
@@ -39,25 +39,40 @@ export function Whatsapp() {
     return [];
   })();
 
+  const shellStyle = fullscreen ? {
+    width: "100%", height: "100%", background: "transparent",
+    borderRadius: 0, padding: 0, position: "relative",
+  } : {
+    width: 340, height: 680, background: "#000", borderRadius: 36,
+    padding: 8, boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
+    position: "relative",
+  };
+
+  const innerStyle = fullscreen ? {
+    height: "100%", width: "100%", borderRadius: 0, overflow: "hidden",
+    display: "flex", flexDirection: "column",
+  } : {
+    height: "100%", width: "100%", borderRadius: 28, overflow: "hidden",
+    display: "flex", flexDirection: "column",
+  };
+
   return (
-    <div style={{
-      width: 340, height: 680, background: "#000", borderRadius: 36,
-      padding: 8, boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
-      position: "relative",
-    }}>
-      {/* speaker notch */}
-      <div style={{
-        position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)",
-        width: 80, height: 6, background: "#1a1a1a", borderRadius: 4,
-      }}/>
-      <div style={{
-        height: "100%", width: "100%", borderRadius: 28, overflow: "hidden",
-        display: "flex", flexDirection: "column",
-      }}>
+    <div style={shellStyle}>
+      {/* speaker notch — only meaningful inside the phone bezel */}
+      {!fullscreen && (
+        <div style={{
+          position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)",
+          width: 80, height: 6, background: "#1a1a1a", borderRadius: 4,
+        }}/>
+      )}
+      <div style={innerStyle}>
         {/* Header */}
         <div style={{
           background: WA_GREEN_HEADER, color: "#fff",
-          padding: "32px 14px 10px 14px", display: "flex", alignItems: "center", gap: 10,
+          padding: fullscreen
+            ? "calc(env(safe-area-inset-top, 0px) + 12px) 14px 10px"
+            : "32px 14px 10px 14px",
+          display: "flex", alignItems: "center", gap: 10,
         }}>
           <div style={{
             width: 36, height: 36, borderRadius: "50%",
@@ -87,6 +102,7 @@ export function Whatsapp() {
           {chat.map((m, i) => (
             <Bubble key={i} from={m.from} text={m.text} t={m.t} />
           ))}
+          {typing && <TypingBubble/>}
         </div>
 
         {/* Quick replies */}
@@ -129,6 +145,37 @@ export function Whatsapp() {
         </div>
       </div>
     </div>
+  );
+}
+
+function TypingBubble() {
+  return (
+    <div style={{
+      alignSelf: "flex-start", maxWidth: "82%",
+      background: "#fff", borderRadius: 8, padding: "8px 12px",
+      boxShadow: "0 1px 0.5px rgba(0,0,0,0.08)",
+      display: "inline-flex", alignItems: "center", gap: 4,
+    }} className="fade-up">
+      <Dot delay="0s"/>
+      <Dot delay="0.15s"/>
+      <Dot delay="0.3s"/>
+      <style>{`
+        @keyframes wa-typing {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30%           { transform: translateY(-3px); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function Dot({ delay }) {
+  return (
+    <span style={{
+      width: 6, height: 6, borderRadius: "50%", background: "#7d8186",
+      display: "inline-block",
+      animation: `wa-typing 1s ease-in-out ${delay} infinite`,
+    }}/>
   );
 }
 
