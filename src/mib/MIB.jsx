@@ -266,7 +266,7 @@ function StatusBar() {
   );
 }
 
-// ─── Pending leads — failed CRM submissions queued in localStorage ────────────
+// ─── Captured leads — every submission, regardless of CRM outcome ─────────────
 function PendingLeads() {
   const [queue, setQueue] = useState(() => getQueuedLeads());
   const [open, setOpen] = useState(false);
@@ -281,27 +281,30 @@ function PendingLeads() {
     };
   }, []);
 
-  const count = queue.length;
-  const hasFailures = count > 0;
+  const total = queue.length;
+  const failed = queue.filter(e => e.status === "failed" || e.status === "skipped").length;
+  const hasIssues = failed > 0;
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        title={hasFailures ? "Submissions that failed to reach the CRM" : "No pending leads"}
+        title={total === 0
+          ? "No captured leads yet"
+          : `${total} captured · ${failed} need attention`}
         style={{
-          background: hasFailures ? "#fff4ce" : "transparent",
-          border: `1px solid ${hasFailures ? "#d8b740" : "transparent"}`,
-          color: hasFailures ? "#3b3a39" : "#888",
+          background: hasIssues ? "#fff4ce" : "transparent",
+          border: `1px solid ${hasIssues ? "#d8b740" : "transparent"}`,
+          color: hasIssues ? "#3b3a39" : "#888",
           padding: "1px 8px", borderRadius: 2, fontSize: 11,
           cursor: "pointer", fontFamily: "inherit",
           display: "inline-flex", alignItems: "center", gap: 6,
         }}>
         <span style={{
           width: 8, height: 8, borderRadius: "50%",
-          background: hasFailures ? "#d83b01" : "#888",
+          background: hasIssues ? "#d83b01" : "#107c10",
         }}/>
-        Pending leads · {count}
+        Leads · {total}{failed ? ` (${failed} failed)` : ""}
       </button>
 
       {open && (
@@ -338,7 +341,7 @@ function PendingLeadsModal({ queue, onClose, onExport, onClear, onRemove }) {
           display: "flex", alignItems: "center", gap: 12,
         }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: "#1a1a1a", flex: 1 }}>
-            Pending CRM leads <span style={{ color: "#888", fontWeight: 400 }}>· {queue.length}</span>
+            Captured leads <span style={{ color: "#888", fontWeight: 400 }}>· {queue.length}</span>
           </div>
           <button onClick={onExport} disabled={queue.length === 0} style={btnPrimary(queue.length === 0)}>
             Export CSV
@@ -354,7 +357,8 @@ function PendingLeadsModal({ queue, onClose, onExport, onClear, onRemove }) {
         <div style={{ overflow: "auto", flex: 1 }}>
           {queue.length === 0 ? (
             <div style={{ padding: "40px 18px", textAlign: "center", color: "#888", fontSize: 13 }}>
-              No pending leads. Anything that fails to reach the CRM will land here.
+              No captured leads yet. Every WhatsApp completion will land here,
+              whether or not it reached the CRM.
             </div>
           ) : (
             <table style={{
@@ -363,11 +367,12 @@ function PendingLeadsModal({ queue, onClose, onExport, onClear, onRemove }) {
               <thead>
                 <tr style={{ background: "#f7f7f6", textAlign: "left" }}>
                   <th style={th}>When</th>
+                  <th style={th}>Status</th>
                   <th style={th}>Name</th>
                   <th style={th}>Mobile</th>
                   <th style={th}>Email</th>
                   <th style={th}>Campaign</th>
-                  <th style={th}>Reason</th>
+                  <th style={th}>CRM ref / reason</th>
                   <th style={{ ...th, width: 40 }}/>
                 </tr>
               </thead>
@@ -375,12 +380,17 @@ function PendingLeadsModal({ queue, onClose, onExport, onClear, onRemove }) {
                 {queue.map((e) => (
                   <tr key={e.timestamp} style={{ borderTop: "1px solid #ececea" }}>
                     <td style={td}>{new Date(e.timestamp).toLocaleString()}</td>
+                    <td style={td}><StatusPill status={e.status}/></td>
                     <td style={td}>{e.name}</td>
                     <td style={td}>{e.mobile}</td>
                     <td style={td}>{e.email}</td>
                     <td style={td}>{e.campaign}</td>
-                    <td style={{ ...td, color: "#a4262c", maxWidth: 260, whiteSpace: "normal" }}>
-                      {e.reason}
+                    <td style={{
+                      ...td,
+                      color: e.status === "sent" ? "#107c10" : "#a4262c",
+                      maxWidth: 260, whiteSpace: "normal",
+                    }}>
+                      {e.crmRef || e.reason}
                     </td>
                     <td style={td}>
                       <button onClick={() => onRemove(e.timestamp)}
@@ -403,6 +413,24 @@ function PendingLeadsModal({ queue, onClose, onExport, onClear, onRemove }) {
 
 const th = { padding: "8px 12px", fontWeight: 600, fontSize: 11, color: "#3b3a39", whiteSpace: "nowrap" };
 const td = { padding: "8px 12px", whiteSpace: "nowrap" };
+
+const STATUS_STYLES = {
+  sent:    { bg: "#dff6dd", fg: "#107c10", label: "Sent" },
+  failed:  { bg: "#fde7e9", fg: "#a4262c", label: "Failed" },
+  skipped: { bg: "#fff4ce", fg: "#8a6d3b", label: "Skipped" },
+  queued:  { bg: "#eef1f5", fg: "#3b3a39", label: "Queued" },
+};
+
+function StatusPill({ status }) {
+  const s = STATUS_STYLES[status] || STATUS_STYLES.queued;
+  return (
+    <span style={{
+      background: s.bg, color: s.fg, fontSize: 10, fontWeight: 700,
+      padding: "2px 8px", borderRadius: 10, textTransform: "uppercase",
+      letterSpacing: "0.4px",
+    }}>{s.label}</span>
+  );
+}
 
 const btnPrimary = (disabled) => ({
   background: disabled ? "#d4d2d0" : TEAL, color: "#fff",

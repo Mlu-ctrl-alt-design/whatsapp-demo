@@ -25,7 +25,7 @@ export async function createLead({ name, mobile, email }) {
   const submission = { name, mobile, email, campaign: CAMPAIGN };
 
   if (!crmConfigured()) {
-    queueLead({ ...submission, reason: "CRM credentials not configured" });
+    queueLead({ ...submission, status: "skipped", reason: "CRM credentials not configured" });
     return { ok: false, skipped: true, reason: "CRM credentials not configured" };
   }
 
@@ -56,13 +56,24 @@ export async function createLead({ name, mobile, email }) {
 
     if (!res.ok) {
       const body = await res.text();
-      queueLead({ ...submission, reason: `HTTP ${res.status}: ${body.slice(0, 300)}` });
+      queueLead({
+        ...submission, status: "failed",
+        reason: `HTTP ${res.status}: ${body.slice(0, 300)}`,
+      });
       return { ok: false, status: res.status, error: body.slice(0, 500) };
     }
     const data = await res.json();
-    return { ok: true, name: data?.data?.name, data };
+    const crmRef = data?.data?.name || "";
+    queueLead({
+      ...submission, status: "sent", crmRef,
+      reason: crmRef ? `Sent — ${crmRef}` : "Sent",
+    });
+    return { ok: true, name: crmRef, data };
   } catch (err) {
-    queueLead({ ...submission, reason: err.message || String(err) });
+    queueLead({
+      ...submission, status: "failed",
+      reason: err.message || String(err),
+    });
     return { ok: false, error: err.message || String(err) };
   }
 }
@@ -95,6 +106,8 @@ export function queueLead(entry) {
     mobile: entry.mobile || "",
     email: entry.email || "",
     campaign: entry.campaign || CAMPAIGN,
+    status: entry.status || "queued",
+    crmRef: entry.crmRef || "",
     reason: entry.reason || "",
   });
   writeQueue(list);
@@ -120,7 +133,7 @@ const csvCell = (v) => {
 
 export function exportQueuedLeadsCsv() {
   const list = readQueue();
-  const header = ["timestamp", "name", "mobile", "email", "campaign", "reason"];
+  const header = ["timestamp", "status", "name", "mobile", "email", "campaign", "crmRef", "reason"];
   const rows = list.map(e => header.map(h => csvCell(e[h])).join(","));
   const csv = [header.join(","), ...rows].join("\n");
 
@@ -129,7 +142,7 @@ export function exportQueuedLeadsCsv() {
   const a = document.createElement("a");
   a.href = url;
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  a.download = `crm-leads-pending-${stamp}.csv`;
+  a.download = `crm-leads-${stamp}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
