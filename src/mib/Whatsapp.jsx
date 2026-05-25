@@ -134,7 +134,9 @@ export function Whatsapp({ fullscreen = false }) {
             placeholder="Type a message"
             style={{
               flex: 1, padding: "10px 14px", borderRadius: 20,
-              border: "none", background: "#fff", fontSize: 13,
+              border: "none", background: "#fff",
+              // iOS Safari auto-zooms when input font-size < 16px on focus.
+              fontSize: fullscreen ? 16 : 13,
             }}
           />
           <button onClick={send} style={{
