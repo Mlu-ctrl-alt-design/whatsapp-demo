@@ -420,6 +420,11 @@ function runFulfilment({ say, audit, dispatch, claim }) {
 
   audit("Visitor confirmed the burial details");
 
+  // Show the WhatsApp typing indicator across the silent processing pause
+  // (modules, costs, payment) so the visitor doesn't think the chat froze.
+  // The first say() inside the steps below will replace it with a bubble.
+  dispatch({ type: "BOT_TYPING", on: true });
+
   // Silent dashboard updates — touch each module and audit, no chat copy.
   const remaining = MODULES.filter(m => m.key !== "burials");
   remaining.forEach((m) => {
