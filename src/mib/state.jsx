@@ -473,17 +473,22 @@ function runFulfilment({ say, audit, dispatch, claim }) {
     audit("Funds released & invoice generated");
   });
 
-  // Chat-side: confirm the claim is logged, then replay the summary.
+  // Chat-side: lead with the reference so the visitor sees it clearly,
+  // then replay the summary of what they shared.
   steps.push(() => {
-    say("✅ Your claim has been logged.\nOne of our consultants will reach out to you soon.");
+    const ref = claim.recordId || "—";
+    say(
+      `✅ Your claim has been logged.\n\n` +
+      `Your reference number:\n${ref}\n\n` +
+      `Please save this — one of our consultants will reach out to you using this reference.`
+    );
   });
 
   steps.push(() => {
-    const { informant, burialSummary, burialDetails, recordId } = claim;
+    const { informant, burialSummary, burialDetails } = claim;
     const lines = [
       "Here's a summary of what you shared:",
       "",
-      `• Reference: ${recordId || "—"}`,
       `• Reported by: ${informant.name}`,
       `• Phone: ${informant.contactNumber}`,
       `• Deceased: ${burialSummary.deceased}`,

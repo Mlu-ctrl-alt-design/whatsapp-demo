@@ -18,16 +18,16 @@ export function Transition() {
     <div style={{
       flex: 1, minWidth: 0, background: "#fff",
       display: "flex", alignItems: "center", justifyContent: "center",
-      flexDirection: "column", padding: 40, overflow: "hidden",
+      flexDirection: "column", padding: "28px 20px", overflow: "auto",
     }}>
       <div style={{
         position: "relative",
-        width: 120, height: 120, borderRadius: "50%",
+        width: 96, height: 96, borderRadius: "50%",
         background: "#dff6dd",
         display: "grid", placeItems: "center",
-        marginBottom: 28,
+        marginBottom: 18,
       }} className="check-pop">
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none">
           <path d="M5 12.5l4.5 4.5L19 7.5"
                 stroke={GREEN} strokeWidth="3"
                 strokeLinecap="round" strokeLinejoin="round"
@@ -37,40 +37,45 @@ export function Transition() {
       </div>
 
       <div style={{
-        fontSize: 28, fontWeight: 700, color: "#201f1e", marginBottom: 8,
+        fontSize: 24, fontWeight: 700, color: "#201f1e", marginBottom: 6,
         textAlign: "center",
       }} className="fade-up">
         Claim successfully logged
       </div>
 
       <div style={{
-        fontSize: 14, color: "#605e5c", marginBottom: 28, textAlign: "center",
+        fontSize: 14, color: "#605e5c", marginBottom: 20, textAlign: "center",
         maxWidth: 420, lineHeight: 1.5,
       }} className="fade-up">
-        Your records are saved. The summary is on its way to{" "}
+        A consultant will reach out to you shortly. The summary is on its way to{" "}
         <b style={{ color: "#201f1e" }}>{claim.informant.email || "your email"}</b>.
+      </div>
+
+      {/* Reference number — the headline a visitor needs to remember. */}
+      <div style={{
+        background: "#f3faff", border: `1px solid ${TEAL}`,
+        borderRadius: 6, padding: "14px 20px", marginBottom: 18,
+        textAlign: "center", width: "100%", maxWidth: 360,
+      }} className="fade-up">
+        <div style={{
+          fontSize: 10, color: TEAL, fontWeight: 700,
+          textTransform: "uppercase", letterSpacing: "1px", marginBottom: 6,
+        }}>Your reference number</div>
+        <div style={{
+          fontSize: 22, fontWeight: 700, color: "#201f1e",
+          fontFamily: "'SF Mono','Menlo','Consolas',monospace", letterSpacing: "1px",
+        }}>{claim.recordId || "—"}</div>
       </div>
 
       <div style={{
         background: "#fafafa", border: "1px solid #e1dfdd",
-        padding: "16px 24px", borderRadius: 4, minWidth: 360,
+        padding: "14px 20px", borderRadius: 4, width: "100%", maxWidth: 360,
         display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
       }} className="fade-up">
-        <Row label="Burial reference" value={claim.recordId}/>
-        <Row label="Deceased"         value={claim.burialSummary.deceased}/>
-        <Row label="Package"          value={claim.burialDetails.burialPackage}/>
-        <Row label="Total"            value={total ? `R ${total.toLocaleString("en-ZA")}` : "—"}/>
-      </div>
-
-      <div style={{
-        marginTop: 36, fontSize: 12, color: "#a19f9d",
-        display: "flex", alignItems: "center", gap: 8,
-      }} className="fade-up">
-        <span style={{
-          width: 6, height: 6, borderRadius: "50%", background: TEAL,
-          animation: "pulse2 1.4s infinite",
-        }}/>
-        Loading your business view…
+        <Row label="Deceased"  value={claim.burialSummary.deceased}/>
+        <Row label="Relation"  value={claim.burialSummary.cover}/>
+        <Row label="Package"   value={claim.burialDetails.burialPackage}/>
+        <Row label="Total"     value={total ? `R ${total.toLocaleString("en-ZA")}` : "—"}/>
       </div>
 
       <style>{`
