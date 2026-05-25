@@ -10,6 +10,7 @@ import {
   AUDIENCE, RELATIONS, PACKAGES, DEFAULT_PACKAGE_KEY,
   COST_LINES, MODULES, CLOSE,
 } from "./data.js";
+import { createLead } from "./crm.js";
 
 const ts = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -149,8 +150,13 @@ export function DemoProvider({ children }) {
         break;
       }
       case "ASK_NUMBER": {
-        dispatch({ type: "PATCH_CLAIM", patch: { informant: { contactNumber: text } } });
-        audit(`Contact number captured: ${text}`);
+        const normalised = normalisePhone(text);
+        if (!normalised) {
+          say("That doesn't look like a valid phone number.\nTry a 10-digit number like 0821234567, or +27 82 123 4567.");
+          break;
+        }
+        dispatch({ type: "PATCH_CLAIM", patch: { informant: { contactNumber: normalised } } });
+        audit(`Contact number captured: ${normalised}`);
         dispatch({ type: "PATCH_CLAIM", patch: {
           stage: "Received",
           createdOn: ts(),
@@ -251,7 +257,7 @@ export function DemoProvider({ children }) {
       case "AWAIT_CONFIRM": {
         if (/^confirm\b/i.test(text) || text.toLowerCase() === "yes") {
           dispatch({ type: "SET_PHASE", phase: "FULFILLING" });
-          runFulfilment({ say, audit, dispatch, packageKey: s.claim.packageKey });
+          runFulfilment({ say, audit, dispatch, claim: s.claim });
         } else if (/^change\b/i.test(text) || /^edit\b/i.test(text)) {
           dispatch({ type: "SET_PHASE", phase: "AWAIT_PACKAGE" });
           const lines = [
@@ -293,10 +299,25 @@ export function DemoProvider({ children }) {
         dispatch({ type: "PATCH_CLAIM", patch: { informant: { email: text } } });
         dispatch({ type: "AWAIT_EMAIL", on: false });
         audit(`Email captured: ${text}`);
-        const tag = stateRef.current.claim.audienceTag;
+        const snapshot = stateRef.current.claim;
+        const tag = snapshot.audienceTag;
         advance("CLOSED", () => {
           say(`Got it. Sending your summary to ${text} now.`);
           setTimeout(() => say(CLOSE[tag] || CLOSE.consumer), 800);
+        });
+        // Fire-and-forget — log the lead in the Daystar CRM under the SAFPA campaign.
+        createLead({
+          name: snapshot.informant.name,
+          mobile: snapshot.informant.contactNumber,
+          email: text,
+        }).then((result) => {
+          if (result.ok) {
+            audit(`CRM lead created (SAFPA)${result.name ? ` — ${result.name}` : ""}`);
+          } else if (result.skipped) {
+            audit("CRM lead skipped — credentials not configured");
+          } else {
+            audit(`CRM lead failed: ${result.error || result.status}`);
+          }
         });
         break;
       }
@@ -380,21 +401,20 @@ function runConfirmation({ say, audit, dispatch, packageKey }) {
 }
 
 // ─── REPORT phase 2 — fulfilment (post-confirmation) ──────────────────────────
-function runFulfilment({ say, audit, dispatch, packageKey }) {
-  const pkg = PACKAGES[packageKey] || PACKAGES[DEFAULT_PACKAGE_KEY];
+// Right-side dashboard still updates silently (modules, costs, payment).
+// Chat side just confirms the claim is logged and replays the summary.
+function runFulfilment({ say, audit, dispatch, claim }) {
+  const pkg = PACKAGES[claim.packageKey] || PACKAGES[DEFAULT_PACKAGE_KEY];
   const steps = [];
 
   audit("Visitor confirmed the burial details");
 
+  // Silent dashboard updates — touch each module and audit, no chat copy.
   const remaining = MODULES.filter(m => m.key !== "burials");
-  remaining.forEach((m, i) => {
+  remaining.forEach((m) => {
     steps.push(() => {
       dispatch({ type: "TOUCH_MODULE", key: m.key });
       audit(m.crumb);
-      if (i === 0) say("✅ Policy checked.");
-      if (i === 1) say("✅ Money sent.");
-      if (i === 2) say("✅ Trips booked.");
-      if (i === 3) say("✅ Records linked.");
     });
   });
 
@@ -402,7 +422,6 @@ function runFulfilment({ say, audit, dispatch, packageKey }) {
     dispatch({ type: "PATCH_CLAIM", patch: { stage: "In Progress" } });
   });
 
-  // Stream cost lines — amounts depend on the chosen package.
   const amounts = {
     package:  pkg.price,
     extras:   pkg.extras,
@@ -423,11 +442,9 @@ function runFulfilment({ say, audit, dispatch, packageKey }) {
           salesOrder: `SO-${Math.floor(10000+Math.random()*90000)}`,
         },
       }});
-      say(`${c.waLabel} — R${amount.toLocaleString("en-ZA")}`);
     });
   });
 
-  // Payment settles
   steps.push(() => {
     const total = Object.values(amounts).reduce((a, b) => a + b, 0);
     dispatch({ type: "PATCH_CLAIM", patch: {
@@ -443,17 +460,54 @@ function runFulfilment({ say, audit, dispatch, packageKey }) {
       stage: "Completed",
     }});
     audit("Funds released & invoice generated");
-    say("Done.\nThis took 4 hours.\nNot days. Not weeks.");
+  });
+
+  // Chat-side: confirm the claim is logged, then replay the summary.
+  steps.push(() => {
+    say("✅ Your claim has been logged.\nOne of our consultants will reach out to you soon.");
+  });
+
+  steps.push(() => {
+    const { informant, burialSummary, burialDetails, recordId } = claim;
+    const lines = [
+      "Here's a summary of what you shared:",
+      "",
+      `• Reference: ${recordId || "—"}`,
+      `• Reported by: ${informant.name}`,
+      `• Phone: ${informant.contactNumber}`,
+      `• Deceased: ${burialSummary.deceased}`,
+      `• Relation: ${burialSummary.cover}`,
+    ];
+    if (burialSummary.transferOut === "Yes") {
+      lines.push("• Other scheme: transfer-out requested");
+    }
+    lines.push(
+      `• Package: ${pkg.name} (${pkg.coffin})`,
+      `• Date: ${burialDetails.burialDate}`,
+      `• Service: ${burialDetails.placeOfService} at ${burialDetails.serviceTime}`,
+      `• Burial: ${burialDetails.placeOfBurial}`,
+    );
+    say(lines.join("\n"));
   });
 
   // Ask for email
   steps.push(() => {
     dispatch({ type: "SET_PHASE", phase: "ASK_EMAIL" });
     dispatch({ type: "AWAIT_EMAIL", on: true });
-    say("Where do we send your summary?\nReply with your email.");
+    say("Where should we send a copy of this summary?\nReply with your email.");
   });
 
   steps.forEach((fn, i) => setTimeout(fn, 700 + i * 1300));
+}
+
+// Accepts SA mobile formats. Returns a normalised "0XXXXXXXXX" string,
+// or null if the input doesn't look like a phone number.
+function normalisePhone(raw) {
+  const digits = (raw || "").replace(/[\s\-().]/g, "");
+  if (/^0\d{9}$/.test(digits)) return digits;
+  if (/^\+27\d{9}$/.test(digits)) return "0" + digits.slice(3);
+  if (/^27\d{9}$/.test(digits)) return "0" + digits.slice(2);
+  return null;
 }
 
 function nextSat() {
