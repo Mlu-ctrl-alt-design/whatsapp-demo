@@ -1,84 +1,60 @@
-// Thin client for the Daystar CRM (Frappe). Used by the WhatsApp demo to log
-// a CRM Lead after the visitor finishes the booth flow.
+// Client for the booth backend. The browser POSTs every WhatsApp completion
+// to /api/leads — that backend (see server/index.js) owns persistence and
+// forwards to the Daystar CRM server-side. If our backend is unreachable
+// the submission still lands in a localStorage queue as a last-ditch
+// fallback so it can be exported as CSV later.
 //
 // Configure via Vite env vars in `.env.local`:
-//   VITE_CRM_BASE_URL=/crm                 (use Vite dev proxy)
-//   VITE_CRM_API_KEY=xxx
-//   VITE_CRM_API_SECRET=yyy
-//   VITE_CRM_CAMPAIGN=SAFPA                (optional, defaults to "SAFPA")
-//   VITE_CRM_LEAD_DOCTYPE=CRM Lead         (optional, defaults to "CRM Lead")
-//
-// When a POST fails (network, CORS, validation, server down) the submission
-// is queued to localStorage so it can be reviewed and exported as CSV later.
+//   VITE_API_BASE_URL=/api                (default; routed via Vite proxy in dev)
+//   VITE_CRM_CAMPAIGN=SAFPA               (display-only on the queue entries)
 
-const BASE      = import.meta.env.VITE_CRM_BASE_URL || "/crm";
-const API_KEY   = import.meta.env.VITE_CRM_API_KEY;
-const API_SEC   = import.meta.env.VITE_CRM_API_SECRET;
-const CAMPAIGN  = import.meta.env.VITE_CRM_CAMPAIGN || "SAFPA";
-const DOCTYPE   = import.meta.env.VITE_CRM_LEAD_DOCTYPE || "CRM Lead";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+const CAMPAIGN = import.meta.env.VITE_CRM_CAMPAIGN || "SAFPA";
 
 const QUEUE_KEY = "crm_lead_queue_v1";
-
-export const crmConfigured = () => Boolean(API_KEY && API_SEC);
 
 export async function createLead({ name, mobile, email }) {
   const submission = { name, mobile, email, campaign: CAMPAIGN };
 
-  if (!crmConfigured()) {
-    queueLead({ ...submission, status: "skipped", reason: "CRM credentials not configured" });
-    return { ok: false, skipped: true, reason: "CRM credentials not configured" };
-  }
-
-  const [firstName, ...rest] = (name || "").trim().split(/\s+/);
-  const lastName = rest.join(" ");
-
-  const payload = {
-    lead_name: name,
-    first_name: firstName || name,
-    last_name: lastName || undefined,
-    mobile_no: mobile,
-    email: email,
-    campaign: CAMPAIGN,
-  };
-
-  const url = `${BASE.replace(/\/$/, "")}/api/resource/${encodeURIComponent(DOCTYPE)}`;
-
   try {
-    const res = await fetch(url, {
+    const res = await fetch(`${API_BASE.replace(/\/$/, "")}/leads`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `token ${API_KEY}:${API_SEC}`,
-        "Accept": "application/json",
-      },
-      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ name, mobile, email }),
     });
 
     if (!res.ok) {
       const body = await res.text();
+      // Backend rejected (e.g. validation). Stash to the local fallback
+      // so we don't lose the visitor's details.
       queueLead({
         ...submission, status: "failed",
-        reason: `HTTP ${res.status}: ${body.slice(0, 300)}`,
+        reason: `Backend HTTP ${res.status}: ${body.slice(0, 300)}`,
       });
       return { ok: false, status: res.status, error: body.slice(0, 500) };
     }
+
     const data = await res.json();
-    const crmRef = data?.data?.name || "";
+    const lead = data?.lead || {};
+    // Mirror the backend's record into the local queue so the booth UI
+    // can show it even when no one is hitting the server's /api/leads.
     queueLead({
-      ...submission, status: "sent", crmRef,
-      reason: crmRef ? `Sent — ${crmRef}` : "Sent",
+      ...submission,
+      status: lead.status || "queued",
+      crmRef: lead.crmRef || "",
+      reason: lead.reason || "",
     });
-    return { ok: true, name: crmRef, data };
+    return { ok: true, name: lead.crmRef || "", data: lead };
   } catch (err) {
     queueLead({
       ...submission, status: "failed",
-      reason: err.message || String(err),
+      reason: `Backend unreachable: ${err.message || String(err)}`,
     });
     return { ok: false, error: err.message || String(err) };
   }
 }
 
-// ─── Local queue (failed / unsent submissions) ────────────────────────────────
+// ─── Local fallback queue (used when the backend is unreachable) ──────────────
 
 function readQueue() {
   try {

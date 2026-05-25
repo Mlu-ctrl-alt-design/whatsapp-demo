@@ -5,13 +5,20 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const crmTarget = env.VITE_CRM_PROXY_TARGET || 'https://crm.thedaystar.co.za'
+  const apiTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:3001'
 
   return {
     plugins: [react()],
     server: {
       proxy: {
-        // Browser hits same-origin /crm/* → Vite forwards to the Daystar CRM,
-        // bypassing browser CORS for the booth demo.
+        // Browser hits same-origin /api/* → our backend (npm run server),
+        // which owns persistence and forwards to the CRM server-side.
+        '/api': {
+          target: apiTarget,
+          changeOrigin: true,
+        },
+        // Legacy direct-to-CRM proxy. Kept so the old client path still
+        // works during the migration; can be deleted once nothing uses it.
         '/crm': {
           target: crmTarget,
           changeOrigin: true,
